@@ -1,0 +1,260 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', sans-serif;
+  background: #ffffff;
+  color: #000000;
+  min-width: 320px;
+}
+
+.container {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+h1 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #000000;
+  margin: 0;
+}
+
+.collect-button {
+  background: #F8604A;
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  padding: 12px 24px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.collect-button:hover {
+  background: #E05643;
+}
+
+.collect-button:active {
+  background: #D55240;
+}
+
+.collect-button:disabled {
+  background: rgba(0, 0, 0, 0.05);
+  color: rgba(0, 0, 0, 0.25);
+  cursor: not-allowed;
+}
+
+.status {
+  padding: 12px;
+  border-radius: 6px;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.status.loading {
+  background: #E5F2FF;
+  color: #0066CC;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status.loading::before {
+  content: '';
+  width: 16px;
+  height: 16px;
+  border: 2px solid #0066CC;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.result {
+  padding: 12px;
+  border-radius: 6px;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.result.success {
+  background: #E8F5E9;
+  color: #2E7D32;
+}
+
+.result.error {
+  background: #FFEBEE;
+  color: #C62828;
+}
+
+.result.empty {
+  background: #FFF3E0;
+  color: #E65100;
+}
+
+.hidden {
+  display: none !important;
+}
+/* Preview section styles */
+.preview-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.preview-section h2 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #000000;
+  margin: 0;
+}
+
+.preview-list {
+  max-height: 400px;
+  overflow-y: auto;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+  padding: 12px;
+  background: #F9F9F9;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.preview-section-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.preview-section-header {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.7);
+  margin: 0;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.preview-item {
+  background: #ffffff;
+  border-radius: 8px;
+  padding: 12px;
+  padding-left: 16px;
+  margin-bottom: 6px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.preview-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  border-radius: 8px 0 0 8px;
+}
+
+.preview-item-spec::before {
+  background: #4CAF50;
+}
+
+.preview-item-business::before {
+  background: #FF9800;
+}
+
+.preview-item-guarantee::before {
+  background: #2196F3;
+}
+
+.preview-item:last-child {
+  margin-bottom: 0;
+}
+
+.preview-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: #000000;
+  line-height: 1.4;
+}
+
+.preview-url {
+  font-size: 12px;
+  color: #1976D2;
+  text-decoration: none;
+  word-break: break-all;
+  line-height: 1.4;
+  transition: color 0.2s ease;
+}
+
+.preview-url:hover {
+  color: #1565C0;
+  text-decoration: underline;
+}
+
+.preview-url:active {
+  color: #0D47A1;
+}
+
+.preview-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.download-button {
+  flex: 1;
+  background: #4CAF50;
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.download-button:hover {
+  background: #45A049;
+}
+
+.download-button:active {
+  background: #3D8B40;
+}
+
+.cancel-button {
+  flex: 1;
+  background: rgba(0, 0, 0, 0.05);
+  color: rgba(0, 0, 0, 0.7);
+  border: none;
+  border-radius: 6px;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.cancel-button:hover {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.cancel-button:active {
+  background: rgba(0, 0, 0, 0.12);
+}

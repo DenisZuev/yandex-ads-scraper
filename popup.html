@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Yandex Ads Scraper</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Сбор рекламы Яндекс</h1>
+    <button id="collectBtn" class="collect-button">
+      Собрать рекламу
+    </button>
+    <div id="status" class="status hidden"></div>
+    <div id="result" class="result hidden"></div>
+    
+    <!-- Preview section -->
+    <div id="previewSection" class="preview-section hidden">
+      <h2>Найденные объявления:</h2>
+      <div id="previewList" class="preview-list"></div>
+      <div class="preview-actions">
+        <button id="downloadBtn" class="download-button">Скачать JSON</button>
+        <button id="cancelBtn" class="cancel-button">Отмена</button>
+      </div>
+    </div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
