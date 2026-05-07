@@ -74,8 +74,29 @@ class YandexAdParser {
    * @returns {Element[]} Array of ad block elements
    */
   findAdBlocks() {
-    // Use the clear ad class selector - Organic_withAdvLabel
-    const regularAds = Array.from(document.querySelectorAll('.Organic_withAdvLabel'));
+    // Primary: old class (still works on some pages)
+    let regularAds = Array.from(document.querySelectorAll('.Organic_withAdvLabel'));
+
+    // Fallback: Yandex obfuscated class names like Organic_withadXXXXX
+    // Find all Organic elements that contain a "Промо" label
+    if (regularAds.length === 0) {
+      const allOrganics = Array.from(document.querySelectorAll('[class*="Organic_withad"], [class*="Organic_withadv"]'));
+      regularAds = allOrganics;
+    }
+
+    // Final fallback: find any element containing "Промо" label text, get parent Organic block
+    if (regularAds.length === 0) {
+      const promoLabels = Array.from(document.querySelectorAll('[class*="Organicad"], [class*="OrganicAdv"]'))
+        .filter(el => el.textContent.trim() === 'Промо');
+      const seen = new Set();
+      promoLabels.forEach(label => {
+        const organic = label.closest('[class*="Organic"]');
+        if (organic && !seen.has(organic)) {
+          seen.add(organic);
+          regularAds.push(organic);
+        }
+      });
+    }
     
     // TODO: Временно отключено - парсинг Яндекс.Бизнес карточек работает некорректно
     // Вернёмся к этому позже для доработки
@@ -150,8 +171,13 @@ class YandexAdParser {
    * @returns {boolean} True if element is an ad
    */
   isAdvertisement(element) {
-    // Check if element has the clear ad class
-    return element.classList.contains('Organic_withAdvLabel');
+    // Old class
+    if (element.classList.contains('Organic_withAdvLabel')) return true;
+    // New obfuscated class pattern
+    if (Array.from(element.classList).some(c => c.startsWith('Organic_withad'))) return true;
+    // Has Промо label inside
+    const labels = element.querySelectorAll('[class*="Organicad"], [class*="OrganicAdv"]');
+    return Array.from(labels).some(l => l.textContent.trim() === 'Промо');
   }
   
   /**
@@ -170,7 +196,8 @@ class YandexAdParser {
     }
     
     // Find first organic (non-ad) search result
-    const organicResults = document.querySelectorAll('.Organic:not(.Organic_withAdvLabel)');
+    const organicResults = Array.from(document.querySelectorAll('[class*="Organic"]'))
+      .filter(el => !this.isAdvertisement(el) && el.querySelector('[class*="OrganicTitle"]'));
     
     if (organicResults.length === 0) {
       // No organic results found, assume all ads are спецразмещение
@@ -212,8 +239,7 @@ class YandexAdParser {
         title: this.extractTitle(adElement),
         url: this.extractUrl(adElement),
         description: this.extractDescription(adElement),
-        position: index,
-        adType: this.getAdType(adElement),
+        position: index + 1,
         additionalLinks: this.extractSitelinks(adElement) || []
       };
     } catch (error) {
@@ -261,8 +287,7 @@ class YandexAdParser {
         title: title,
         url: url || 'https://yandex.ru',
         description: description,
-        position: index,
-        adType: 'яндекс.бизнес',
+        position: index + 1,
         additionalLinks: []
       };
     } catch (error) {
@@ -286,22 +311,22 @@ class YandexAdParser {
    * @returns {string|null} Real landing page URL with all parameters or null
    */
   extractUrl(adElement) {
-    // Try to extract the real landing page URL from data-vnl attribute
-    // This contains the actual destination URL before Yandex redirect
-    const linkElement = adElement.querySelector('a[data-vnl]');
-    if (linkElement) {
+    // Try new attribute: data-aqoln (Yandex 2025+)
+    const linkWithAqoln = adElement.querySelector('a[data-aqoln]');
+    if (linkWithAqoln) {
       try {
-        const vnlData = linkElement.getAttribute('data-vnl');
-        if (vnlData) {
-          const vnlJson = JSON.parse(vnlData);
-          if (vnlJson.noRedirectUrl) {
-            // Return full URL with all UTM parameters for analysis
-            return vnlJson.noRedirectUrl;
-          }
-        }
-      } catch (error) {
-        console.warn('Failed to parse data-vnl attribute:', error);
-      }
+        const data = JSON.parse(linkWithAqoln.getAttribute('data-aqoln'));
+        if (data.noRedirectUrl) return data.noRedirectUrl;
+      } catch { /* fall through */ }
+    }
+
+    // Try old attribute: data-vnl
+    const linkWithVnl = adElement.querySelector('a[data-vnl]');
+    if (linkWithVnl) {
+      try {
+        const data = JSON.parse(linkWithVnl.getAttribute('data-vnl'));
+        if (data.noRedirectUrl) return data.noRedirectUrl;
+      } catch { /* fall through */ }
     }
     
     // Fallback: try to extract from link href (this will be yabs.yandex.ru redirect URL)
@@ -397,38 +422,9 @@ function highlightCollectedAds(adBlocks) {
   removeHighlights();
   
   adBlocks.forEach((block, index) => {
-    // Add highlight class
     block.classList.add('yandex-ads-scraper-highlight');
-    
-    // Add data attribute for identification
     block.setAttribute('data-scraper-index', index);
-    
-    // Determine color based on ad type
-    let color = '#4CAF50'; // Default green for спецразмещение
-    
-    // Check if this is an OrgCard (map card)
-    const isOrgCard = block.classList.contains('OrgCard') || 
-                      block.classList.contains('CompaniesModal-OrgCard') ||
-                      Array.from(block.classList).some(cls => cls.includes('OrgCard'));
-    
-    if (isOrgCard) {
-      color = '#FF9800'; // Orange for яндекс.бизнес (map cards)
-    } else {
-      // Check position for regular ads with Organic_withAdvLabel class
-      const organicResults = document.querySelectorAll('.Organic:not(.Organic_withAdvLabel)');
-      if (organicResults.length > 0) {
-        const firstOrganic = organicResults[0];
-        const blockRect = block.getBoundingClientRect();
-        const organicRect = firstOrganic.getBoundingClientRect();
-        
-        if (blockRect.top >= organicRect.top) {
-          color = '#2196F3'; // Blue for гарантия
-        }
-      }
-    }
-    
-    // Add ONLY ONE outline with rounded corners
-    block.style.outline = `2px solid ${color}`;
+    block.style.outline = '2px solid #F8604A';
     block.style.outlineOffset = '2px';
     block.style.borderRadius = '8px';
   });

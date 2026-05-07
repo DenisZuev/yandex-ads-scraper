@@ -309,48 +309,33 @@ class SidePanelController {
     const body = document.createElement('div');
     body.className = 'session-body';
 
-    const specAds      = session.ads.filter(a => a.adType === 'спецразмещение');
-    const guaranteeAds = session.ads.filter(a => a.adType === 'гарантия');
-    const businessAds  = session.ads.filter(a => a.adType === 'яндекс.бизнес');
-
-    if (specAds.length)      body.appendChild(this.createAdGroup('Спецразмещение', specAds, 'spec'));
-    if (businessAds.length)  body.appendChild(this.createAdGroup('Яндекс.Бизнес', businessAds, 'business'));
-    if (guaranteeAds.length) body.appendChild(this.createAdGroup('Гарантия', guaranteeAds, 'guarantee'));
+    session.ads.forEach((ad, i) => {
+      body.appendChild(this.createAdItem(ad, i + 1));
+    });
 
     card.appendChild(header);
     card.appendChild(body);
     return card;
   }
 
-  createAdGroup(label, ads, type) {
-    const group = document.createElement('div');
+  createAdItem(ad, num) {
+    const item = document.createElement('div');
+    item.className = 'ad-item';
 
-    const header = document.createElement('div');
-    header.className = 'ad-group-header';
-    header.textContent = `${label} (${ads.length})`;
-    group.appendChild(header);
+    const title = document.createElement('div');
+    title.className = 'ad-title';
+    title.textContent = `${num}. ${ad.title || 'Без названия'}`;
 
-    ads.forEach((ad) => {
-      const item = document.createElement('div');
-      item.className = `ad-item ad-item-${type}`;
+    const url = document.createElement('a');
+    url.className = 'ad-url';
+    url.href = ad.url || '#';
+    url.target = '_blank';
+    url.rel = 'noopener noreferrer';
+    url.textContent = this.formatUrl(ad.url);
 
-      const title = document.createElement('div');
-      title.className = 'ad-title';
-      title.textContent = ad.title || 'Без названия';
-
-      const url = document.createElement('a');
-      url.className = 'ad-url';
-      url.href = ad.url || '#';
-      url.target = '_blank';
-      url.rel = 'noopener noreferrer';
-      url.textContent = this.formatUrl(ad.url);
-
-      item.appendChild(title);
-      item.appendChild(url);
-      group.appendChild(item);
-    });
-
-    return group;
+    item.appendChild(title);
+    item.appendChild(url);
+    return item;
   }
 
   // ── Totals ────────────────────────────────────────────────────────────────
