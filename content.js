@@ -240,6 +240,7 @@ class YandexAdParser {
         url: this.extractUrl(adElement),
         description: this.extractDescription(adElement),
         position: index + 1,
+        adType: this.getAdType(adElement),
         additionalLinks: this.extractSitelinks(adElement) || []
       };
     } catch (error) {

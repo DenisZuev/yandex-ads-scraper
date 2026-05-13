@@ -245,7 +245,6 @@ h1 {
   min-width: 20px;
   text-align: center;
 }
-}
 
 .session-toggle {
   font-size: 10px;
@@ -421,6 +420,35 @@ h1 {
 
 .batch-textarea:focus { border-color: #F8604A; background: #fff; }
 .batch-textarea:disabled { opacity: 0.5; }
+
+.domain-selector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: rgba(0,0,0,0.55);
+}
+
+.domain-label {
+  font-weight: 600;
+}
+
+.domain-option {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+
+.domain-option:hover { background: rgba(0,0,0,0.05); }
+
+.domain-option input[type="radio"] {
+  margin: 0;
+  accent-color: #F8604A;
+}
 
 .batch-actions {
   display: flex;

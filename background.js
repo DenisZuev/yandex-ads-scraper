@@ -15,10 +15,17 @@ chrome.runtime.onInstalled.addListener((details) => {
 
 // ── Batch scraping coordinator ────────────────────────────────────────────
 
+let batchStopRequested = false;
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'batchScrape') {
-    runBatchScrape(request.queries, sendResponse);
+    batchStopRequested = false;
+    runBatchScrape(request.queries, request.domain || 'ya.ru', sendResponse);
     return true; // keep channel open
+  }
+  if (request.action === 'batchStop') {
+    batchStopRequested = true;
+    sendResponse({ success: true });
   }
 });
 
@@ -26,43 +33,55 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
  * Open a tab for each query, wait for load, collect ads, close tab.
  * Reports progress back to side panel via chrome.runtime.sendMessage.
  */
-async function runBatchScrape(queries, sendResponse) {
+async function runBatchScrape(queries, domain, sendResponse) {
+  batchStopRequested = false;
   const results = [];
+  const concurrency = 3;
+  let completed = 0;
+  let started  = 0;
+  const total  = queries.length;
 
-  for (let i = 0; i < queries.length; i++) {
-    const query = queries[i];
+  async function worker() {
+    while (started < total && !batchStopRequested) {
+      const i = started++;
+      const query = queries[i];
 
-    // Notify panel: starting this query
-    chrome.runtime.sendMessage({
-      action: 'batchProgress',
-      current: i + 1,
-      total: queries.length,
-      query
-    }).catch(() => {});
-
-    try {
-      const result = await scrapeQuery(query);
-      results.push(result);
-
-      // Notify panel: got data for this query
       chrome.runtime.sendMessage({
-        action: 'batchResult',
-        result
+        action: 'batchProgress',
+        current: i + 1,
+        total,
+        query
       }).catch(() => {});
 
-    } catch (err) {
-      console.warn(`Batch scrape failed for "${query}":`, err);
+      try {
+        const result = await scrapeQuery(query, domain);
+        results.push(result);
+        chrome.runtime.sendMessage({ action: 'batchResult', result }).catch(() => {});
+      } catch (err) {
+        console.warn(`Batch scrape failed for "${query}":`, err);
+        chrome.runtime.sendMessage({
+          action: 'batchResult',
+          result: { query, error: err.message, ads: [] }
+        }).catch(() => {});
+      }
+
+      completed++;
       chrome.runtime.sendMessage({
-        action: 'batchResult',
-        result: { query, error: err.message, ads: [] }
+        action: 'batchProgress',
+        current: completed,
+        total,
+        query: null
       }).catch(() => {});
     }
   }
 
-  // All done
+  const workers = Array.from({ length: Math.min(concurrency, total) }, () => worker());
+  await Promise.all(workers);
+
   chrome.runtime.sendMessage({
     action: 'batchDone',
-    total: results.length
+    total: results.length,
+    stopped: batchStopRequested
   }).catch(() => {});
 
   sendResponse({ success: true });
@@ -71,9 +90,9 @@ async function runBatchScrape(queries, sendResponse) {
 /**
  * Open a background tab, wait for content script ready, collect ads, close tab.
  */
-function scrapeQuery(query) {
+function scrapeQuery(query, domain) {
   return new Promise((resolve, reject) => {
-    const url = `https://ya.ru/search/?text=${encodeURIComponent(query)}`;
+    const url = `https://${domain}/search/?text=${encodeURIComponent(query)}`;
     let tabId = null;
     let settled = false;
     let loadTimeout = null;

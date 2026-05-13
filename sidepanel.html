@@ -41,6 +41,15 @@
           placeholder="Введите запросы — каждый с новой строки, через запятую или точку с запятой:&#10;&#10;натяжной потолок москва&#10;ремонт квартир спб&#10;окна пвх цена"
           rows="6"
         ></textarea>
+        <div class="domain-selector">
+          <label class="domain-label">Домен:</label>
+          <label class="domain-option">
+            <input type="radio" name="batchDomain" value="ya.ru" checked> ya.ru
+          </label>
+          <label class="domain-option">
+            <input type="radio" name="batchDomain" value="yandex.ru"> yandex.ru
+          </label>
+        </div>
         <div id="batchStatus" class="status hidden"></div>
         <div class="batch-actions">
           <button id="batchStartBtn" class="collect-button">▶ Старт</button>
@@ -74,6 +83,7 @@
     </div>
 
   </div>
+  <script src="utils.js"></script>
   <script src="sidepanel.js"></script>
 </body>
 </html>

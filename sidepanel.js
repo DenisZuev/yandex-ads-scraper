@@ -30,9 +30,11 @@ class SidePanelController {
 
     this.sessions    = [];
     this.batchRunning = false;
+    this.domain       = 'ya.ru';
 
     this.init();
     this.loadSessions();
+    this.loadDomainPref();
   }
 
   init() {
@@ -51,6 +53,11 @@ class SidePanelController {
     // Shared
     this.downloadAllBtn.addEventListener('click', () => this.downloadAll());
     this.clearAllBtn.addEventListener('click',    () => this.clearAll());
+
+    // Domain selector
+    document.querySelectorAll('input[name="batchDomain"]').forEach(radio => {
+      radio.addEventListener('change', () => this.onDomainChange(radio.value));
+    });
 
     // Listen for results from background
     chrome.runtime.onMessage.addListener((msg) => this.handleBgMessage(msg));
@@ -122,7 +129,7 @@ class SidePanelController {
     }
 
     // Parse queries: split by newline, comma, or semicolon
-    const queries = raw
+    let queries = raw
       .split(/[\n,;]+/)
       .map(q => q.trim())
       .filter(q => q.length > 0);
@@ -130,6 +137,21 @@ class SidePanelController {
     if (queries.length === 0) {
       this.showBatchStatus('error', 'Не удалось распознать запросы');
       return;
+    }
+
+    // Deduplicate
+    const before = queries.length;
+    queries = [...new Set(queries)];
+    const dupes = before - queries.length;
+
+    const MAX_BATCH = 50;
+    if (queries.length > MAX_BATCH) {
+      this.showBatchStatus('error', `Максимум ${MAX_BATCH} запросов за раз. У вас ${queries.length}.`);
+      return;
+    }
+
+    if (dupes > 0) {
+      this.showBatchStatus('loading', `Удалено дубликатов: ${dupes}`);
     }
 
     this.batchRunning = true;
@@ -140,7 +162,7 @@ class SidePanelController {
     this.updateProgress(0, queries.length, '');
     this.showBatchStatus('loading', `Запускаем ${queries.length} запросов…`);
 
-    chrome.runtime.sendMessage({ action: 'batchScrape', queries }, () => {
+    chrome.runtime.sendMessage({ action: 'batchScrape', queries, domain: this.domain }, () => {
       // sendResponse callback — batch finished or error
     });
   }
@@ -156,7 +178,11 @@ class SidePanelController {
   handleBgMessage(msg) {
     if (msg.action === 'batchProgress') {
       this.updateProgress(msg.current, msg.total, msg.query);
-      this.showBatchStatus('loading', `${msg.current}/${msg.total}: ${msg.query}`);
+      if (msg.query) {
+        this.showBatchStatus('loading', `${msg.current}/${msg.total}: ${msg.query}`);
+      } else {
+        this.showBatchStatus('loading', `Обработано ${msg.current}/${msg.total}`);
+      }
     }
 
     if (msg.action === 'batchResult') {
@@ -174,14 +200,18 @@ class SidePanelController {
     if (msg.action === 'batchDone') {
       this.batchRunning = false;
       this.resetBatchUI();
-      this.showBatchStatus('success', `Готово! Собрано ${msg.total} запросов`);
+      if (msg.stopped) {
+        this.showBatchStatus('error', `Остановлено. Собрано ${msg.total} запросов.`);
+      } else {
+        this.showBatchStatus('success', `Готово! Собрано ${msg.total} запросов`);
+      }
     }
   }
 
   updateProgress(current, total, query) {
     const pct = total > 0 ? Math.round((current / total) * 100) : 0;
     this.progressBar.style.width = `${pct}%`;
-    this.progressText.textContent = query ? `${current}/${total} — ${query}` : `0/${total}`;
+    this.progressText.textContent = query ? `${current}/${total} — ${query}` : `${current}/${total}`;
   }
 
   resetBatchUI() {
@@ -189,6 +219,24 @@ class SidePanelController {
     this.batchStopBtn.classList.add('hidden');
     this.batchQueries.disabled = false;
     setTimeout(() => this.batchProgress.classList.add('hidden'), 2000);
+  }
+
+  // ── Domain preference ────────────────────────────────────────────────────
+
+  async loadDomainPref() {
+    try {
+      const data = await chrome.storage.local.get('batchDomain');
+      if (data.batchDomain) {
+        this.domain = data.batchDomain;
+        const radio = document.querySelector(`input[name="batchDomain"][value="${this.domain}"]`);
+        if (radio) radio.checked = true;
+      }
+    } catch { /* ignore */ }
+  }
+
+  async onDomainChange(value) {
+    this.domain = value;
+    await chrome.storage.local.set({ batchDomain: value }).catch(() => {});
   }
 
   // ── Persistence ──────────────────────────────────────────────────────────
@@ -206,10 +254,21 @@ class SidePanelController {
     }
   }
 
-  saveSessions() {
-    chrome.storage.local.set({ sessions: this.sessions }).catch(err => {
+  async saveSessions() {
+    try {
+      await chrome.storage.local.set({ sessions: this.sessions });
+      const usage = await chrome.storage.local.getBytesInUse(null);
+      const limit = 10 * 1024 * 1024; // 10 MB
+      if (usage > limit * 0.8) {
+        const pct = Math.round((usage / limit) * 100);
+        this.showBatchStatus('error', `Хранилище заполнено на ${pct}%. Очистите старые сессии.`);
+      }
+    } catch (err) {
+      if (err.message && err.message.includes('QUOTA_BYTES')) {
+        this.showBatchStatus('error', 'Хранилище переполнено. Очистите старые сессии.');
+      }
       console.warn('Failed to save sessions:', err);
-    });
+    }
   }
 
   // ── Sessions ──────────────────────────────────────────────────────────────
@@ -380,7 +439,7 @@ class SidePanelController {
       },
       ads: session.ads
     };
-    this.downloadJSON(data, `yandex-ads-${this.safeTimestamp(session.timestamp)}.json`);
+    downloadJSON(data, `yandex-ads-${this.safeTimestamp(session.timestamp)}.json`);
   }
 
   downloadAll() {
@@ -400,17 +459,6 @@ class SidePanelController {
       }))
     };
     this.downloadJSON(data, `yandex-ads-all-${this.safeTimestamp()}.json`);
-  }
-
-  downloadJSON(data, filename) {
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href = url; a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
   }
 
   // ── Highlights ────────────────────────────────────────────────────────────
@@ -479,6 +527,18 @@ class SidePanelController {
     if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return few;
     return many;
   }
+
+  downloadJSON(data, filename) {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
 }
 
 document.addEventListener('DOMContentLoaded', () => new SidePanelController());
