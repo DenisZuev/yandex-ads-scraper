@@ -312,22 +312,41 @@ class YandexAdParser {
    * @returns {string|null} Real landing page URL with all parameters or null
    */
   extractUrl(adElement) {
-    // Try new attribute: data-aqoln (Yandex 2025+)
-    const linkWithAqoln = adElement.querySelector('a[data-aqoln]');
-    if (linkWithAqoln) {
-      try {
-        const data = JSON.parse(linkWithAqoln.getAttribute('data-aqoln'));
-        if (data.noRedirectUrl) return data.noRedirectUrl;
-      } catch { /* fall through */ }
+    // Try to get noRedirectUrl from title link first (most reliable)
+    const titleSelectors = ['.OrganicTitle-Link', '[class*="OrganicTitle-Link"]', 'h2 a'];
+    for (const sel of titleSelectors) {
+      const link = adElement.querySelector(sel);
+      if (!link) continue;
+      // Try data-aqoln (Yandex 2025+)
+      if (link.dataset.aqoln) {
+        try {
+          const d = JSON.parse(link.getAttribute('data-aqoln'));
+          if (d.noRedirectUrl) return d.noRedirectUrl;
+        } catch { /* fall through */ }
+      }
+      // Try data-vnl (older)
+      if (link.dataset.vnl) {
+        try {
+          const d = JSON.parse(link.getAttribute('data-vnl'));
+          if (d.noRedirectUrl) return d.noRedirectUrl;
+        } catch { /* fall through */ }
+      }
     }
 
-    // Try old attribute: data-vnl
-    const linkWithVnl = adElement.querySelector('a[data-vnl]');
-    if (linkWithVnl) {
+    // Fallback: scan all links with data-aqoln, pick first with noRedirectUrl
+    for (const link of adElement.querySelectorAll('a[data-aqoln]')) {
       try {
-        const data = JSON.parse(linkWithVnl.getAttribute('data-vnl'));
-        if (data.noRedirectUrl) return data.noRedirectUrl;
-      } catch { /* fall through */ }
+        const d = JSON.parse(link.getAttribute('data-aqoln'));
+        if (d.noRedirectUrl) return d.noRedirectUrl;
+      } catch { /* skip */ }
+    }
+
+    // Fallback: scan all links with data-vnl
+    for (const link of adElement.querySelectorAll('a[data-vnl]')) {
+      try {
+        const d = JSON.parse(link.getAttribute('data-vnl'));
+        if (d.noRedirectUrl) return d.noRedirectUrl;
+      } catch { /* skip */ }
     }
     
     // Fallback: try to extract from link href (this will be yabs.yandex.ru redirect URL)
