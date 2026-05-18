@@ -25,16 +25,16 @@ class SidePanelController {
     this.sessionsList      = document.getElementById('sessionsList');
     this.sessionsCount     = document.getElementById('sessionsCount');
     this.downloadAllBtn    = document.getElementById('downloadAllBtn');
+    this.copyAllBtn        = document.getElementById('copyAllBtn');
+    this.csvAllBtn         = document.getElementById('csvAllBtn');
     this.clearAllBtn       = document.getElementById('clearAllBtn');
     this.emptyState        = document.getElementById('emptyState');
 
     this.sessions    = [];
     this.batchRunning = false;
-    this.domain       = 'ya.ru';
 
     this.init();
     this.loadSessions();
-    this.loadDomainPref();
   }
 
   init() {
@@ -52,12 +52,9 @@ class SidePanelController {
 
     // Shared
     this.downloadAllBtn.addEventListener('click', () => this.downloadAll());
+    this.copyAllBtn.addEventListener('click',     () => this.copyAllJSON());
+    this.csvAllBtn.addEventListener('click',      () => this.downloadAllCSV());
     this.clearAllBtn.addEventListener('click',    () => this.clearAll());
-
-    // Domain selector
-    document.querySelectorAll('input[name="batchDomain"]').forEach(radio => {
-      radio.addEventListener('change', () => this.onDomainChange(radio.value));
-    });
 
     // Listen for results from background
     chrome.runtime.onMessage.addListener((msg) => this.handleBgMessage(msg));
@@ -104,11 +101,18 @@ class SidePanelController {
         return;
       }
 
+      // Resolve yabs redirects to real URLs via background tabs
+      let resolvedAds = ads;
+      try {
+        const res = await chrome.runtime.sendMessage({ action: 'resolveUrls', ads });
+        if (res?.ads) resolvedAds = res.ads;
+      } catch { /* keep yabs URLs if resolution fails */ }
+
       this.addSession({
         query:     metadata.searchQuery || tab.title || 'Без запроса',
         pageUrl:   metadata.pageUrl,
         timestamp: metadata.collectionTimestamp,
-        ads
+        ads:       resolvedAds
       });
 
       this.showStatus('success', `Добавлено ${ads.length} объявл. с этой страницы`);
@@ -162,13 +166,12 @@ class SidePanelController {
     this.updateProgress(0, queries.length, '');
     this.showBatchStatus('loading', `Запускаем ${queries.length} запросов…`);
 
-    chrome.runtime.sendMessage({ action: 'batchScrape', queries, domain: this.domain }, () => {
+    chrome.runtime.sendMessage({ action: 'batchScrape', queries, domain: 'ya.ru' }, () => {
       // sendResponse callback — batch finished or error
     });
   }
 
   stopBatch() {
-    // Signal background to stop (it checks this flag via message)
     chrome.runtime.sendMessage({ action: 'batchStop' }).catch(() => {});
     this.batchRunning = false;
     this.resetBatchUI();
@@ -223,21 +226,6 @@ class SidePanelController {
 
   // ── Domain preference ────────────────────────────────────────────────────
 
-  async loadDomainPref() {
-    try {
-      const data = await chrome.storage.local.get('batchDomain');
-      if (data.batchDomain) {
-        this.domain = data.batchDomain;
-        const radio = document.querySelector(`input[name="batchDomain"][value="${this.domain}"]`);
-        if (radio) radio.checked = true;
-      }
-    } catch { /* ignore */ }
-  }
-
-  async onDomainChange(value) {
-    this.domain = value;
-    await chrome.storage.local.set({ batchDomain: value }).catch(() => {});
-  }
 
   // ── Persistence ──────────────────────────────────────────────────────────
 
@@ -274,13 +262,19 @@ class SidePanelController {
   // ── Sessions ──────────────────────────────────────────────────────────────
 
   addSession(session) {
-    this.sessions.unshift(session);
+    const existingIdx = this.sessions.findIndex(s => s.query === session.query);
+    if (existingIdx !== -1) {
+      this.sessions[existingIdx] = session;
+    } else {
+      this.sessions.unshift(session);
+    }
     this.renderSessions();
     this.updateTotals();
     this.saveSessions();
   }
 
   deleteSession(index) {
+    if (!confirm('Удалить эту сессию?')) return;
     this.sessions.splice(index, 1);
     this.renderSessions();
     this.updateTotals();
@@ -289,6 +283,7 @@ class SidePanelController {
   }
 
   clearAll() {
+    if (!confirm('Очистить все сессии? Это действие нельзя отменить.')) return;
     this.sessions = [];
     this.renderSessions();
     this.updateTotals();
@@ -311,7 +306,7 @@ class SidePanelController {
     this.sessionsContainer.classList.remove('hidden');
 
     this.sessions.forEach((session, idx) => {
-      const card = this.createSessionCard(session, idx);
+      const card = this.createSessionCard(session, this.sessions.indexOf(session));
       if (idx > 0) card.classList.add('collapsed');
       this.sessionsList.appendChild(card);
     });
@@ -346,8 +341,20 @@ class SidePanelController {
     const dlBtn = document.createElement('button');
     dlBtn.className = 'btn-session-download';
     dlBtn.textContent = 'JSON';
-    dlBtn.title = 'Скачать эту сессию';
+    dlBtn.title = 'Скачать эту сессию (JSON)';
     dlBtn.addEventListener('click', (e) => { e.stopPropagation(); this.downloadSession(session); });
+
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'btn-session-copy';
+    copyBtn.textContent = '📋';
+    copyBtn.title = 'Копировать JSON в буфер';
+    copyBtn.addEventListener('click', (e) => { e.stopPropagation(); this.copySessionJSON(session); });
+
+    const csvBtn = document.createElement('button');
+    csvBtn.className = 'btn-session-csv';
+    csvBtn.textContent = 'CSV';
+    csvBtn.title = 'Скачать эту сессию (CSV)';
+    csvBtn.addEventListener('click', (e) => { e.stopPropagation(); this.downloadSessionCSV(session); });
 
     const delBtn = document.createElement('button');
     delBtn.className = 'btn-session-delete';
@@ -355,7 +362,9 @@ class SidePanelController {
     delBtn.title = 'Удалить';
     delBtn.addEventListener('click', (e) => { e.stopPropagation(); this.deleteSession(idx); });
 
+    actions.appendChild(copyBtn);
     actions.appendChild(dlBtn);
+    actions.appendChild(csvBtn);
     actions.appendChild(delBtn);
     meta.appendChild(countBadge);
     meta.appendChild(toggle);
@@ -390,10 +399,11 @@ class SidePanelController {
     url.href = ad.url || '#';
     url.target = '_blank';
     url.rel = 'noopener noreferrer';
-    url.textContent = this.formatUrl(ad.url);
+    url.textContent = formatUrl(ad.url);
 
     item.appendChild(title);
     item.appendChild(url);
+
     return item;
   }
 
@@ -402,7 +412,6 @@ class SidePanelController {
   updateTotals() {
     const total = this.sessions.reduce((sum, s) => sum + s.ads.length, 0);
 
-    // Count unique domains across all sessions
     const domains = new Set();
     this.sessions.forEach(s => {
       s.ads.forEach(ad => {
@@ -421,9 +430,9 @@ class SidePanelController {
       this.totalBadge.classList.add('hidden');
     }
 
-    const sessionWord = this.pluralWord(this.sessions.length, 'запрос', 'запроса', 'запросов');
-    const adWord      = this.pluralWord(total, 'объявление', 'объявления', 'объявлений');
-    const siteWord    = this.pluralWord(domains.size, 'сайт', 'сайта', 'сайтов');
+    const sessionWord = pluralWord(this.sessions.length, 'запрос', 'запроса', 'запросов');
+    const adWord      = pluralWord(total, 'объявление', 'объявления', 'объявлений');
+    const siteWord    = pluralWord(domains.size, 'сайт', 'сайта', 'сайтов');
     this.sessionsCount.textContent = `${this.sessions.length} ${sessionWord} · ${total} ${adWord} · ${domains.size} ${siteWord}`;
   }
 
@@ -439,7 +448,27 @@ class SidePanelController {
       },
       ads: session.ads
     };
-    downloadJSON(data, `yandex-ads-${this.safeTimestamp(session.timestamp)}.json`);
+    downloadJSON(data, `yandex-ads-${safeTimestamp(session.timestamp)}.json`);
+  }
+
+  copySessionJSON(session) {
+    const urls = session.ads.map(ad => ad.url).filter(Boolean).join('\n');
+    navigator.clipboard.writeText(urls).catch(() => {});
+  }
+
+  downloadSessionCSV(session) {
+    const data = {
+      sessions: [{
+        searchQuery: session.query,
+        ads: session.ads
+      }]
+    };
+    downloadCSV(data, `yandex-ads-${safeTimestamp(session.timestamp)}.csv`);
+  }
+
+  copyAllJSON() {
+    const urls = this.sessions.flatMap(s => s.ads.map(ad => ad.url)).filter(Boolean).join('\n');
+    navigator.clipboard.writeText(urls).catch(() => {});
   }
 
   downloadAll() {
@@ -458,7 +487,17 @@ class SidePanelController {
         ads:         s.ads
       }))
     };
-    this.downloadJSON(data, `yandex-ads-all-${this.safeTimestamp()}.json`);
+    downloadJSON(data, `yandex-ads-all-${safeTimestamp()}.json`);
+  }
+
+  downloadAllCSV() {
+    const data = {
+      sessions: this.sessions.map(s => ({
+        searchQuery: s.query,
+        ads: s.ads
+      }))
+    };
+    downloadCSV(data, `yandex-ads-all-${safeTimestamp()}.csv`);
   }
 
   // ── Highlights ────────────────────────────────────────────────────────────
@@ -504,39 +543,6 @@ class SidePanelController {
 
   hideNotYandex() {
     this.notYandex.classList.add('hidden');
-  }
-
-  // ── Utils ─────────────────────────────────────────────────────────────────
-
-  formatUrl(url) {
-    if (!url) return '';
-    try {
-      const p = new URL(url);
-      return p.origin + p.pathname.replace(/\/$/, '');
-    } catch { return url; }
-  }
-
-  safeTimestamp(iso) {
-    const ts = iso || new Date().toISOString();
-    return ts.replace(/:/g, '-').replace(/\..+/, '');
-  }
-
-  pluralWord(n, one, few, many) {
-    const mod10 = n % 10, mod100 = n % 100;
-    if (mod10 === 1 && mod100 !== 11) return one;
-    if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return few;
-    return many;
-  }
-
-  downloadJSON(data, filename) {
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href = url; a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
   }
 
 }

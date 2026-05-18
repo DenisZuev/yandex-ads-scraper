@@ -98,14 +98,11 @@ class YandexAdParser {
       });
     }
     
-    // TODO: Временно отключено - парсинг Яндекс.Бизнес карточек работает некорректно
-    // Вернёмся к этому позже для доработки
-    // Find individual promotional cards from map block
-    // const mapAdCards = this.findMapAdCards();
-    // Combine regular ads and map promo cards
-    // return [...regularAds, ...mapAdCards];
+    // Find media ads (AdvMedia items)
+    const mediaItems = Array.from(document.querySelectorAll('.AdvMedia-Item'));
     
-    return regularAds;
+    // Combine regular ads and media ads
+    return [...regularAds, ...mediaItems];
   }
   
   /**
@@ -177,7 +174,10 @@ class YandexAdParser {
     if (Array.from(element.classList).some(c => c.startsWith('Organic_withad'))) return true;
     // Has Промо label inside
     const labels = element.querySelectorAll('[class*="Organicad"], [class*="OrganicAdv"]');
-    return Array.from(labels).some(l => l.textContent.trim() === 'Промо');
+    if (Array.from(labels).some(l => l.textContent.trim() === 'Промо')) return true;
+    // Media ad
+    if (element.classList.contains('AdvMedia-Item')) return true;
+    return false;
   }
   
   /**
@@ -185,38 +185,7 @@ class YandexAdParser {
    * @param {Element} element - DOM element to check
    * @returns {string} Ad type
    */
-  getAdType(element) {
-    // Check if this is an OrgCard (map card) - always яндекс.бизнес
-    const isOrgCard = element.classList.contains('OrgCard') || 
-                      element.classList.contains('CompaniesModal-OrgCard') ||
-                      Array.from(element.classList).some(cls => cls.includes('OrgCard'));
-    
-    if (isOrgCard) {
-      return 'яндекс.бизнес';
-    }
-    
-    // Find first organic (non-ad) search result
-    const organicResults = Array.from(document.querySelectorAll('[class*="Organic"]'))
-      .filter(el => !this.isAdvertisement(el) && el.querySelector('[class*="OrganicTitle"]'));
-    
-    if (organicResults.length === 0) {
-      // No organic results found, assume all ads are спецразмещение
-      return 'спецразмещение';
-    }
-    
-    const firstOrganic = organicResults[0];
-    const elementRect = element.getBoundingClientRect();
-    const organicRect = firstOrganic.getBoundingClientRect();
-    
-    // Compare vertical positions
-    // If ad is above first organic result = спецразмещение
-    // If ad is below first organic result = гарантия
-    if (elementRect.top < organicRect.top) {
-      return 'спецразмещение';
-    } else {
-      return 'гарантия';
-    }
-  }
+
 
   /**
    * Extract structured data from ad element
@@ -234,14 +203,21 @@ class YandexAdParser {
       if (isOrgCard) {
         return this.extractMapCardData(adElement, index);
       }
+
+      // Media ad
+      if (adElement.classList.contains('AdvMedia-Item')) {
+        return this.extractAdvMediaData(adElement, index);
+      }
       
+      const url = this.extractUrl(adElement);
+
       return {
         title: this.extractTitle(adElement),
-        url: this.extractUrl(adElement),
+        url: url,
         description: this.extractDescription(adElement),
         position: index + 1,
-        adType: this.getAdType(adElement),
-        additionalLinks: this.extractSitelinks(adElement) || []
+        additionalLinks: this.extractSitelinks(adElement) || [],
+        utmParams: parseUtmParams(url)
       };
     } catch (error) {
       console.warn(`Failed to extract ad at position ${index}:`, error);
@@ -296,7 +272,31 @@ class YandexAdParser {
       return null;
     }
   }
-  
+
+  /**
+   * Extract data from media ad (AdvMedia-Item)
+   * @param {Element} adElement - AdvMedia-Item element
+   * @param {number} index - Position index
+   * @returns {Object|null} Structured ad data or null
+   */
+  extractAdvMediaData(adElement, index) {
+    const url = this.extractUrl(adElement);
+    let title = null;
+    const img = adElement.querySelector('img.Image');
+    if (img && img.alt) title = img.alt;
+    const link = adElement.querySelector('a.Link');
+    if (!title && link) title = link.textContent.trim() || null;
+    if (!title) title = 'Медийная реклама';
+    return {
+      title: title,
+      url: url,
+      description: null,
+      position: index + 1,
+      additionalLinks: [],
+      utmParams: parseUtmParams(url)
+    };
+  }
+
   /**
    * Extract title from ad element
    * @param {Element} adElement - Ad block element
@@ -348,6 +348,32 @@ class YandexAdParser {
         if (d.noRedirectUrl) return d.noRedirectUrl;
       } catch { /* skip */ }
     }
+
+    // Scan button[data-vnl] for snippetUrl (reportFeedback customMetaFields)
+    for (const btn of adElement.querySelectorAll('button[data-vnl]')) {
+      try {
+        const d = JSON.parse(btn.getAttribute('data-vnl'));
+        if (!d.items) continue;
+        for (const item of d.items) {
+          const fields = item?.reportFeedback?.customMetaFields;
+          if (!fields) continue;
+          for (const field of fields) {
+            if (field.name === 'snippetUrl' && field.value && this.isValidUrl(field.value)) {
+              return field.value;
+            }
+          }
+        }
+      } catch { /* skip */ }
+    }
+
+    // Try data-bem attribute (BEM-based Yandex, stores click URL)
+    for (const link of adElement.querySelectorAll('a[data-bem]')) {
+      try {
+        const d = JSON.parse(link.getAttribute('data-bem'));
+        const url = d?.click?.arguments?.url;
+        if (url && this.isValidUrl(url) && !url.includes('yabs.yandex.ru')) return url;
+      } catch { /* skip */ }
+    }
     
     // Fallback: try to extract from link href (this will be yabs.yandex.ru redirect URL)
     for (const selector of this.selectors.url) {
@@ -362,6 +388,12 @@ class YandexAdParser {
     
     return null;
   }
+
+  /**
+   * Extract URL from data-bem attribute (debug/info-only, not used as primary source)
+   * @param {Element} adElement - Ad block element
+   * @returns {string|null} URL from data-bem or null
+   */
 
   /**
    * Validate URL
@@ -538,6 +570,33 @@ function createMetadata(adCount) {
 function extractSearchQuery() {
   const params = new URLSearchParams(window.location.search);
   return params.get('text') || params.get('query') || '';
+}
+
+/**
+ * Extract raw attributes from ad element
+ * @param {Element} adElement - Ad block element
+ * @returns {Object} Object with cid and fastName
+ */
+
+/**
+ * Parse UTM parameters from URL
+ * @param {string} url - URL to parse
+ * @returns {Object|null} Parsed UTM parameters or null
+ */
+function parseUtmParams(url) {
+  if (!url) return null;
+  try {
+    const params = new URL(url).searchParams;
+    const utm = {};
+    const utmKeys = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'];
+    for (const key of utmKeys) {
+      const val = params.get(key);
+      if (val) utm[key] = val;
+    }
+    return Object.keys(utm).length > 0 ? utm : null;
+  } catch {
+    return null;
+  }
 }
 
 /**

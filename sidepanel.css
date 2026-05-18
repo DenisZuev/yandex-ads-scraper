@@ -141,13 +141,16 @@ h1 {
   background: #fff;
   border-bottom: 1px solid rgba(0,0,0,0.06);
   flex-shrink: 0;
+  gap: 8px;
 }
 
 .sessions-count {
   font-size: 11px;
   color: rgba(0,0,0,0.45);
   font-weight: 500;
+  white-space: nowrap;
 }
+
 
 .toolbar-actions {
   display: flex;
@@ -167,6 +170,34 @@ h1 {
 }
 
 .btn-download-all:hover { background: #43a047; }
+
+.btn-copy-all {
+  background: #ff8f00;
+  color: #fff;
+  border: none;
+  border-radius: 5px;
+  padding: 5px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn-copy-all:hover { background: #e65100; }
+
+.btn-csv-all {
+  background: #1976d2;
+  color: #fff;
+  border: none;
+  border-radius: 5px;
+  padding: 5px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn-csv-all:hover { background: #1565c0; }
 
 .btn-clear {
   background: rgba(0,0,0,0.06);
@@ -275,6 +306,40 @@ h1 {
 
 .btn-session-download:hover {
   background: #4CAF50;
+  color: #fff;
+}
+
+.btn-session-copy {
+  background: none;
+  border: 1px solid rgba(255,143,0,0.4);
+  color: #ff8f00;
+  border-radius: 4px;
+  padding: 2px 7px;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-session-copy:hover {
+  background: #ff8f00;
+  color: #fff;
+}
+
+.btn-session-csv {
+  background: none;
+  border: 1px solid rgba(25,118,210,0.4);
+  color: #1976d2;
+  border-radius: 4px;
+  padding: 2px 7px;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-session-csv:hover {
+  background: #1976d2;
   color: #fff;
 }
 

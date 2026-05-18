@@ -27,6 +27,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     batchStopRequested = true;
     sendResponse({ success: true });
   }
+  if (request.action === 'resolveUrls') {
+    resolveAllYabsUrls(request.ads).then(ads => {
+      ads.forEach(ad => { ad.utmParams = parseUtmParams(ad.url); });
+      sendResponse({ ads });
+    });
+    return true;
+  }
 });
 
 /**
@@ -55,6 +62,11 @@ async function runBatchScrape(queries, domain, sendResponse) {
 
       try {
         const result = await scrapeQuery(query, domain);
+        result.ads = await resolveAllYabsUrls(result.ads);
+        // Re-parse UTM params after URL resolution
+        result.ads.forEach(ad => {
+          ad.utmParams = parseUtmParams(ad.url);
+        });
         results.push(result);
         chrome.runtime.sendMessage({ action: 'batchResult', result }).catch(() => {});
       } catch (err) {
@@ -177,6 +189,98 @@ function scrapeQuery(query, domain) {
 
 function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));
+}
+
+function parseUtmParams(url) {
+  if (!url) return null;
+  try {
+    const params = new URL(url).searchParams;
+    const utm = {};
+    const keys = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'];
+    for (const key of keys) {
+      const val = params.get(key);
+      if (val) utm[key] = val;
+    }
+    return Object.keys(utm).length > 0 ? utm : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolve a yabs redirect URL using a background tab.
+ * Opens a hidden tab, lets the browser follow the redirect,
+ * captures the final URL, then closes the tab.
+ */
+function resolveYabsViaTab(yabsUrl) {
+  return new Promise((resolve) => {
+    let tabId = null;
+    let settled = false;
+    let timer = null;
+
+    function finish(url) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      chrome.tabs.onUpdated.removeListener(listener);
+      if (tabId !== null) chrome.tabs.remove(tabId).catch(() => {});
+      resolve(url);
+    }
+
+    function listener(updatedTabId, changeInfo) {
+      if (updatedTabId !== tabId || settled) return;
+      if (changeInfo.url && !changeInfo.url.includes('yabs.yandex.ru')) {
+        finish(changeInfo.url);
+      }
+    }
+
+    chrome.tabs.onUpdated.addListener(listener);
+
+    chrome.tabs.create({ url: yabsUrl, active: false }, (tab) => {
+      if (chrome.runtime.lastError) {
+        finish(yabsUrl);
+        return;
+      }
+      tabId = tab.id;
+    });
+
+    timer = setTimeout(() => finish(yabsUrl), 8000);
+  });
+}
+
+/**
+ * Resolve all yabs URLs in ads using background tabs (3 concurrent).
+ */
+async function resolveAllYabsUrls(ads) {
+  const yabsAds = [];
+  ads.forEach((ad, idx) => {
+    if (ad.url && ad.url.includes('yabs.yandex.ru')) {
+      yabsAds.push({ ad, idx });
+    }
+  });
+
+  if (yabsAds.length === 0) return ads;
+
+  const concurrency = 3;
+  let i = 0;
+
+  async function worker() {
+    while (i < yabsAds.length) {
+      const cur = i++;
+      const { ad } = yabsAds[cur];
+      ad.url = await resolveYabsViaTab(ad.url);
+      if (ad.additionalLinks) {
+        for (const link of ad.additionalLinks) {
+          if (typeof link === 'object' && link.url && link.url.includes('yabs.yandex.ru')) {
+            link.url = await resolveYabsViaTab(link.url);
+          }
+        }
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(concurrency, yabsAds.length) }, () => worker()));
+  return ads;
 }
 
 console.log('Yandex Ads Scraper background service worker loaded');

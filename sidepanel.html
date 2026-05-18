@@ -46,9 +46,6 @@
           <label class="domain-option">
             <input type="radio" name="batchDomain" value="ya.ru" checked> ya.ru
           </label>
-          <label class="domain-option">
-            <input type="radio" name="batchDomain" value="yandex.ru"> yandex.ru
-          </label>
         </div>
         <div id="batchStatus" class="status hidden"></div>
         <div class="batch-actions">
@@ -69,7 +66,9 @@
       <div class="sessions-toolbar">
         <span id="sessionsCount" class="sessions-count"></span>
         <div class="toolbar-actions">
-          <button id="downloadAllBtn" class="btn-download-all">↓ Скачать всё</button>
+          <button id="copyAllBtn" class="btn-copy-all">📋 URL</button>
+          <button id="downloadAllBtn" class="btn-download-all">↓ JSON</button>
+          <button id="csvAllBtn" class="btn-csv-all">↓ CSV</button>
           <button id="clearAllBtn" class="btn-clear">✕ Очистить</button>
         </div>
       </div>
@@ -83,6 +82,7 @@
     </div>
 
   </div>
+  <script src="punycode.js"></script>
   <script src="utils.js"></script>
   <script src="sidepanel.js"></script>
 </body>

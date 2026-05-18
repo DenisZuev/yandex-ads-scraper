@@ -13,7 +13,8 @@
   ],
   "host_permissions": [
     "https://yandex.ru/*",
-    "https://ya.ru/*"
+    "https://ya.ru/*",
+    "https://yabs.yandex.ru/*"
   ],
   "action": {
     "default_icon": {
