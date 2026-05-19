@@ -437,7 +437,7 @@ h1 {
 }
 
 /* ── Utility ── */
-.hidden { display: none !important; }
+.hidden { display: none; }
 
 /* ── Tabs ── */
 .tabs {

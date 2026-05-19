@@ -262,8 +262,17 @@ class SidePanelController {
       const usage = await chrome.storage.local.getBytesInUse(null);
       const limit = 10 * 1024 * 1024; // 10 MB
       if (usage > limit * 0.8) {
-        const pct = Math.round((usage / limit) * 100);
-        this.showBatchStatus('error', `Хранилище заполнено на ${pct}%. Очистите старые сессии.`);
+        // Auto-cleanup: remove oldest sessions until under 70%
+        const target = limit * 0.7;
+        while (this.sessions.length > 1) {
+          this.sessions.pop(); // remove oldest (newest are at front via unshift)
+          await chrome.storage.local.set({ sessions: this.sessions });
+          const newUsage = await chrome.storage.local.getBytesInUse(null);
+          if (newUsage <= target) break;
+        }
+        this.showBatchStatus('error', 'Хранилище было переполнено. Удалены старые сессии.');
+        this.renderSessions();
+        this.updateTotals();
       }
     } catch (err) {
       if (err.message && err.message.includes('QUOTA_BYTES')) {
@@ -321,7 +330,8 @@ class SidePanelController {
 
     this.sessions.forEach((session, idx) => {
       const card = this.createSessionCard(session, this.sessions.indexOf(session));
-      if (idx > 0) card.classList.add('collapsed');
+      const isCollapsed = session.collapsed !== undefined ? session.collapsed : (idx > 0);
+      if (isCollapsed) card.classList.add('collapsed');
       this.sessionsList.appendChild(card);
     });
   }
@@ -386,7 +396,11 @@ class SidePanelController {
     header.appendChild(query);
     header.appendChild(meta);
 
-    header.addEventListener('click', () => card.classList.toggle('collapsed'));
+    header.addEventListener('click', () => {
+      card.classList.toggle('collapsed');
+      session.collapsed = card.classList.contains('collapsed');
+      this.saveSessions();
+    });
 
     const body = document.createElement('div');
     body.className = 'session-body';
