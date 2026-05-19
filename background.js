@@ -1,6 +1,17 @@
 /**
  * Background Service Worker for Yandex Ads Scraper Extension
  */
+importScripts('utils.js');
+
+// ── Keepalive port (prevents service worker shutdown during batch) ──────────
+let keepalivePort = null;
+
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name === 'keepalive') {
+    keepalivePort = port;
+    port.onDisconnect.addListener(() => { keepalivePort = null; });
+  }
+});
 
 // Open side panel when user clicks the extension icon
 chrome.action.onClicked.addListener((tab) => {
@@ -189,22 +200,6 @@ function scrapeQuery(query, domain) {
 
 function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));
-}
-
-function parseUtmParams(url) {
-  if (!url) return null;
-  try {
-    const params = new URL(url).searchParams;
-    const utm = {};
-    const keys = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'];
-    for (const key of keys) {
-      const val = params.get(key);
-      if (val) utm[key] = val;
-    }
-    return Object.keys(utm).length > 0 ? utm : null;
-  } catch {
-    return null;
-  }
 }
 
 /**

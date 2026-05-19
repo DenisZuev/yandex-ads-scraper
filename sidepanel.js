@@ -32,6 +32,7 @@ class SidePanelController {
 
     this.sessions    = [];
     this.batchRunning = false;
+    this.keepalivePort = null;
 
     this.init();
     this.loadSessions();
@@ -154,11 +155,15 @@ class SidePanelController {
       return;
     }
 
+    const domainEl = document.querySelector('input[name="batchDomain"]:checked');
+    const domain = domainEl ? domainEl.value : 'ya.ru';
+
     if (dupes > 0) {
       this.showBatchStatus('loading', `Удалено дубликатов: ${dupes}`);
     }
 
     this.batchRunning = true;
+    this.keepalivePort = chrome.runtime.connect({ name: 'keepalive' });
     this.batchStartBtn.classList.add('hidden');
     this.batchStopBtn.classList.remove('hidden');
     this.batchQueries.disabled = true;
@@ -166,7 +171,7 @@ class SidePanelController {
     this.updateProgress(0, queries.length, '');
     this.showBatchStatus('loading', `Запускаем ${queries.length} запросов…`);
 
-    chrome.runtime.sendMessage({ action: 'batchScrape', queries, domain: 'ya.ru' }, () => {
+    chrome.runtime.sendMessage({ action: 'batchScrape', queries, domain }, () => {
       // sendResponse callback — batch finished or error
     });
   }
@@ -174,8 +179,16 @@ class SidePanelController {
   stopBatch() {
     chrome.runtime.sendMessage({ action: 'batchStop' }).catch(() => {});
     this.batchRunning = false;
+    this.disconnectKeepalive();
     this.resetBatchUI();
     this.showBatchStatus('error', 'Остановлено');
+  }
+
+  disconnectKeepalive() {
+    if (this.keepalivePort) {
+      this.keepalivePort.disconnect();
+      this.keepalivePort = null;
+    }
   }
 
   handleBgMessage(msg) {
@@ -202,6 +215,7 @@ class SidePanelController {
 
     if (msg.action === 'batchDone') {
       this.batchRunning = false;
+      this.disconnectKeepalive();
       this.resetBatchUI();
       if (msg.stopped) {
         this.showBatchStatus('error', `Остановлено. Собрано ${msg.total} запросов.`);
